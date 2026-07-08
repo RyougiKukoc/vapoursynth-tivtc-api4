@@ -27,7 +27,7 @@
 #include <xmmintrin.h>
 #include <emmintrin.h>
 #include <algorithm>
-#include <VSHelper.h>
+#include <VSHelper4.h>
 #include "cpufeatures.h"
 
 template<int bits_per_pixel>
@@ -109,7 +109,7 @@ void compute_sum_8xN_sse2(const uint8_t *srcp, int pitch, int &sum);
 void compute_sum_16x8_sse2_luma(const uint8_t *srcp, int pitch, int &sum);
 
 // fixme: put non-asm utility functions into different file
-void copyFrame(VSFrameRef *dst, const VSFrameRef *src, const VSAPI *vsapi);
+void copyFrame(VSFrame *dst, const VSFrame *src, const VSAPI *vsapi);
 
 template<typename pixel_t>
 void blend_5050_SSE2(uint8_t* dstp, const uint8_t* srcp1, const uint8_t* srcp2, int width, int height, int dst_pitch, int src1_pitch, int src2_pitch);

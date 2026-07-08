@@ -90,11 +90,11 @@ void TFM::parseD2V()
         else if (error == 4) throw TIVTCError("TFM:  frame count using trimIn file " \
           "doesn't match filter frame count!");
       }
-      else if (frames != vi->numFrames)
+      else if (frames != vi.numFrames)
       {
         char err[200] = { 0 };
         snprintf(err, 200, "TFM:  d2v frame count does not match filter frame count (%d vs %d)!",
-          frames, vi->numFrames);
+          frames, vi.numFrames);
         throw TIVTCError(err);
       }
       error = D2V_fill_d2vfilmarray(valIn, frames);
@@ -160,7 +160,7 @@ int TFM::fillTrimArray(int frames)
   {
     if (trimArray[x]) ++v;
   }
-  if (v != vi->numFrames) return 4;
+  if (v != vi.numFrames) return 4;
   return 0;
 }
 
@@ -564,7 +564,7 @@ int TFM::D2V_fill_d2vfilmarray(const std::vector<int> &array, int frames)
   if (flags == 0) d2vpercent = -20.0;
   if (trimIn.size() && trimArray.size())
   {
-    std::vector<uint8_t> d2vt(vi->numFrames, 0);
+    std::vector<uint8_t> d2vt(vi.numFrames, 0);
 //    if (d2vt == nullptr) return 2;
     for (v = 0, i = 0; i <= nfrms && v < frames; ++v)
     {
@@ -575,13 +575,13 @@ int TFM::D2V_fill_d2vfilmarray(const std::vector<int> &array, int frames)
       }
     }
     d2vfilmarray.resize(0);
-    d2vfilmarray.resize(vi->numFrames);
+    d2vfilmarray.resize(vi.numFrames);
 //    if (d2vfilmarray == nullptr)
 //    {
 //      free(d2vt);
 //      return 3;
 //    }
-    memcpy(d2vfilmarray.data(), d2vt.data(), vi->numFrames * sizeof(unsigned char));
+    memcpy(d2vfilmarray.data(), d2vt.data(), vi.numFrames * sizeof(unsigned char));
     trimArray.resize(0);
   }
   return 0;

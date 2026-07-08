@@ -1061,8 +1061,8 @@ static void calcDiff_SADorSSD_32x32_SSE2(const uint8_t* ptr1, const uint8_t* ptr
   const uint8_t* ptr1T, * ptr2T;
 
     // from YV12 to generic planar
-    const int xsubsampling = plane == 0 ? 0 : vi->format->subSamplingW;
-    const int ysubsampling = plane == 0 ? 0 : vi->format->subSamplingH;
+    const int xsubsampling = plane == 0 ? 0 : vi->format.subSamplingW;
+    const int ysubsampling = plane == 0 ? 0 : vi->format.subSamplingH;
     // base: luma: 16x16, chroma: divided with subsampling
     const int w_to_shift = 4 - xsubsampling;
     const int h_to_shift = 4 - ysubsampling;
@@ -1194,8 +1194,8 @@ void calcDiff_SADorSSD_Generic_SSE2(const uint8_t* ptr1, const uint8_t* ptr2,
   const uint8_t* ptr1T, * ptr2T;
 
     // from YV12 to generic planar
-    const int xsubsampling = plane == 0 ? 0 : vi->format->subSamplingW;
-    const int ysubsampling = plane == 0 ? 0 : vi->format->subSamplingH;
+    const int xsubsampling = plane == 0 ? 0 : vi->format.subSamplingW;
+    const int ysubsampling = plane == 0 ? 0 : vi->format.subSamplingH;
     // base: luma: 8x8, chroma: divided with subsampling
     const int w_to_shift = 3 - xsubsampling;
     const int h_to_shift = 3 - ysubsampling;
@@ -1336,12 +1336,12 @@ void calcDiff_SADorSSD_Generic_c(const pixel_t* prvp, const pixel_t* curp,
   int heighta, widtha;
   const pixel_t* prvpT, * curpT;
 
-  const int bits_per_pixel = vi->format->bitsPerSample;
+  const int bits_per_pixel = vi->format.bitsPerSample;
   const int shift_count = SAD ? (bits_per_pixel - 8) : 2 * (bits_per_pixel - 8);
 
   {
-    const int ysubsampling = plane == 0 ? 0 : vi->format->subSamplingH;
-    const int xsubsampling = plane == 0 ? 0 : vi->format->subSamplingW;
+    const int ysubsampling = plane == 0 ? 0 : vi->format.subSamplingH;
+    const int xsubsampling = plane == 0 ? 0 : vi->format.subSamplingW;
     yshift = yshiftS - ysubsampling;
     yhalf = yhalfS >> ysubsampling;
     xshift = xshiftS - xsubsampling;

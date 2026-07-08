@@ -31,7 +31,7 @@
 
 
 template<int planarType>
-void FillCombedPlanarUpdateCmaskByUV(VSFrameRef* cmask, const VSAPI *vsapi)
+void FillCombedPlanarUpdateCmaskByUV(VSFrame* cmask, const VSAPI *vsapi)
 {
   uint8_t* cmkp = vsapi->getWritePtr(cmask, 0);
   uint8_t* cmkpU = vsapi->getWritePtr(cmask, 1);
@@ -44,17 +44,17 @@ void FillCombedPlanarUpdateCmaskByUV(VSFrameRef* cmask, const VSAPI *vsapi)
 }
 
 // templatize
-template void FillCombedPlanarUpdateCmaskByUV<411>(VSFrameRef* cmask, const VSAPI *vsapi);
-template void FillCombedPlanarUpdateCmaskByUV<420>(VSFrameRef* cmask, const VSAPI *vsapi);
-template void FillCombedPlanarUpdateCmaskByUV<422>(VSFrameRef* cmask, const VSAPI *vsapi);
-template void FillCombedPlanarUpdateCmaskByUV<444>(VSFrameRef* cmask, const VSAPI *vsapi);
+template void FillCombedPlanarUpdateCmaskByUV<411>(VSFrame* cmask, const VSAPI *vsapi);
+template void FillCombedPlanarUpdateCmaskByUV<420>(VSFrame* cmask, const VSAPI *vsapi);
+template void FillCombedPlanarUpdateCmaskByUV<422>(VSFrame* cmask, const VSAPI *vsapi);
+template void FillCombedPlanarUpdateCmaskByUV<444>(VSFrame* cmask, const VSAPI *vsapi);
 
 //FIXME: once to make it common with TDeInterlace::CheckedCombedPlanar
 //similar, but cmask is real PVideoFrame there
 template<typename pixel_t>
-void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chroma, const CPUFeatures *cpuFlags, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi)
+void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chroma, const CPUFeatures *cpuFlags, int metric, const VSFrame *src, VSFrame* cmask, const VSAPI *vsapi)
 {
-  const int bits_per_pixel = vi->format->bitsPerSample;
+  const int bits_per_pixel = vi->format.bitsPerSample;
 
   const bool use_sse2 = cpuFlags->sse2;
   const bool use_sse4 = cpuFlags->sse4_1;
@@ -68,7 +68,7 @@ void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chro
 
   const int cthresh6 = scaled_cthresh * 6;
 
-  const int np = vi->format->numPlanes;
+  const int np = vi->format.numPlanes;
   const int stop = chroma ? np : 1;
 
   for (int b = 0; b < stop; ++b)
@@ -219,20 +219,20 @@ void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chro
   // Includes chroma combing in the decision about whether a frame is combed.
   if (chroma)
   {
-    if (vi->format->subSamplingW == 1 && vi->format->subSamplingH == 1) FillCombedPlanarUpdateCmaskByUV<420>(cmask, vsapi);
-    else if (vi->format->subSamplingW == 1 && vi->format->subSamplingH == 0) FillCombedPlanarUpdateCmaskByUV<422>(cmask, vsapi);
-    else if (vi->format->subSamplingW == 0 && vi->format->subSamplingH == 0) FillCombedPlanarUpdateCmaskByUV<444>(cmask, vsapi);
-    else if (vi->format->subSamplingW == 2 && vi->format->subSamplingH == 0) FillCombedPlanarUpdateCmaskByUV<411>(cmask, vsapi);
+    if (vi->format.subSamplingW == 1 && vi->format.subSamplingH == 1) FillCombedPlanarUpdateCmaskByUV<420>(cmask, vsapi);
+    else if (vi->format.subSamplingW == 1 && vi->format.subSamplingH == 0) FillCombedPlanarUpdateCmaskByUV<422>(cmask, vsapi);
+    else if (vi->format.subSamplingW == 0 && vi->format.subSamplingH == 0) FillCombedPlanarUpdateCmaskByUV<444>(cmask, vsapi);
+    else if (vi->format.subSamplingW == 2 && vi->format.subSamplingH == 0) FillCombedPlanarUpdateCmaskByUV<411>(cmask, vsapi);
   }
   // till now now it's the same as in TFMPlanar::checkCombedPlanar
 }
 
 // instantiate
-template void checkCombedPlanarAnalyze_core<uint8_t>(const VSVideoInfo *vi, int cthresh, bool chroma, const CPUFeatures *cpuFlags, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi);
-template void checkCombedPlanarAnalyze_core<uint16_t>(const VSVideoInfo *vi, int cthresh, bool chroma, const CPUFeatures *cpuFlags, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi);
+template void checkCombedPlanarAnalyze_core<uint8_t>(const VSVideoInfo *vi, int cthresh, bool chroma, const CPUFeatures *cpuFlags, int metric, const VSFrame *src, VSFrame* cmask, const VSAPI *vsapi);
+template void checkCombedPlanarAnalyze_core<uint16_t>(const VSVideoInfo *vi, int cthresh, bool chroma, const CPUFeatures *cpuFlags, int metric, const VSFrame *src, VSFrame* cmask, const VSAPI *vsapi);
 
 
-bool TFM::checkCombedPlanar(const VSFrameRef *src, int n, int match,
+bool TFM::checkCombedPlanar(const VSFrame *src, int n, int match,
   int *blockN, int &xblocksi, int *mics, bool ddebug, bool _chroma)
 {
   if (mics[match] != -20)
@@ -256,19 +256,19 @@ bool TFM::checkCombedPlanar(const VSFrameRef *src, int n, int match,
     return false;
   }
 
-  const int bits_per_pixel = vi->format->bitsPerSample;
-  if (vi->format->bytesPerSample == 1) {
-    checkCombedPlanarAnalyze_core<uint8_t>(vi, cthresh, _chroma, &cpuFlags, metric, src, cmask.get(), vsapi);
+  const int bits_per_pixel = vi.format.bitsPerSample;
+  if (vi.format.bytesPerSample == 1) {
+    checkCombedPlanarAnalyze_core<uint8_t>(&vi, cthresh, _chroma, &cpuFlags, metric, src, cmask.get(), vsapi);
     return checkCombedPlanar_core<uint8_t>(src, n, match, blockN, xblocksi, mics, ddebug, bits_per_pixel);
   }
   else {
-    checkCombedPlanarAnalyze_core<uint16_t>(vi, cthresh, _chroma, &cpuFlags, metric, src, cmask.get(), vsapi);
+    checkCombedPlanarAnalyze_core<uint16_t>(&vi, cthresh, _chroma, &cpuFlags, metric, src, cmask.get(), vsapi);
     return checkCombedPlanar_core<uint16_t>(src, n, match, blockN, xblocksi, mics, ddebug, bits_per_pixel);
   }
 }
 
 template<typename pixel_t>
-bool TFM::checkCombedPlanar_core(const VSFrameRef *src, int n, int match,
+bool TFM::checkCombedPlanar_core(const VSFrame *src, int n, int match,
   int* blockN, int& xblocksi, int* mics, bool ddebug, int bits_per_pixel)
 {
     (void)src;

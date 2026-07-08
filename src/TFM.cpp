@@ -35,7 +35,7 @@ enum _FieldBased {
     TopFieldFirst = 2
 };
 
-const VSFrameRef *TFM::GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
+const VSFrame *TFM::GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core)
 {
   if (n < 0) n = 0;
   else if (n > nfrms) n = nfrms;
@@ -49,9 +49,9 @@ const VSFrameRef *TFM::GetFrame(int n, int activationReason, VSFrameContext *fra
       return nullptr;
   }
 
-  const VSFrameRef *prv = vsapi->getFrameFilter(std::max(0, n - 1), child, frameCtx);
-  const VSFrameRef *src = vsapi->getFrameFilter(n, child, frameCtx);
-  const VSFrameRef *nxt = vsapi->getFrameFilter(std::min(n + 1, nfrms), child, frameCtx);
+  const VSFrame *prv = vsapi->getFrameFilter(std::max(0, n - 1), child, frameCtx);
+  const VSFrame *src = vsapi->getFrameFilter(n, child, frameCtx);
+  const VSFrame *nxt = vsapi->getFrameFilter(std::min(n + 1, nfrms), child, frameCtx);
 
   int dfrm = -20, tfrm = -20;
   int mmatch1, nmatch1, nmatch2, mmatch2, fmatch, tmatch;
@@ -66,11 +66,11 @@ const VSFrameRef *TFM::GetFrame(int n, int activationReason, VSFrameContext *fra
   MI = MI_origSaved;
   getSettingOvr(n); // process overrides
 
-  const VSMap *props = vsapi->getFramePropsRO(src);
+  const VSMap *props = vsapi->getFramePropertiesRO(src);
   int err;
 
   if (order == -1) {
-      int64_t field_based = vsapi->propGetInt(props, "_FieldBased", 0, &err);
+      int64_t field_based = vsapi->mapGetInt(props, "_FieldBased", 0, &err);
       if (err) { // prop not present
           vsapi->setFilterError("TFM: Couldn't find the '_FieldBased' frame property. The 'order' parameter must be used.", frameCtx);
           vsapi->freeFrame(prv);
@@ -87,8 +87,8 @@ const VSFrameRef *TFM::GetFrame(int n, int activationReason, VSFrameContext *fra
   int frstT = field^order ? 2 : 0;
   int scndT = (mode == 2 || mode == 6) ? (field^order ? 3 : 4) : (field^order ? 0 : 2);
 
-  VSFrameRef *dst = vsapi->newVideoFrame(vi->format, vi->width, vi->height, src, core);
-  VSFrameRef *tmp = vsapi->newVideoFrame(vi->format, vi->width, vi->height, nullptr, core);
+  VSFrame *dst = vsapi->newVideoFrame(&vi.format, vi.width, vi.height, src, core);
+  VSFrame *tmp = vsapi->newVideoFrame(&vi.format, vi.width, vi.height, nullptr, core);
 
 //  if (debug)
 //  {
@@ -520,8 +520,8 @@ d2vCJump:
   return dst;
 }
 
-void TFM::checkmm(int &cmatch, int m1, int m2, VSFrameRef *dst, int &dfrm, VSFrameRef *tmp, int &tfrm,
-  const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int n,
+void TFM::checkmm(int &cmatch, int m1, int m2, VSFrame *dst, int &dfrm, VSFrame *tmp, int &tfrm,
+  const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int n,
   int *blockN, int &xblocks, int *mics)
 {
   if (cmatch != m1)
@@ -579,8 +579,8 @@ void TFM::checkmm(int &cmatch, int m1, int m2, VSFrameRef *dst, int &dfrm, VSFra
   }
 }
 
-void TFM::micChange(int n, int m1, int m2, VSFrameRef *dst, const VSFrameRef *prv,
-  const VSFrameRef *src, const VSFrameRef *nxt, int &fmatch,
+void TFM::micChange(int n, int m1, int m2, VSFrame *dst, const VSFrame *prv,
+  const VSFrame *src, const VSFrame *nxt, int &fmatch,
   int &combed, int &cfrm) const
 {
 //  if (debug)
@@ -594,9 +594,9 @@ void TFM::micChange(int n, int m1, int m2, VSFrameRef *dst, const VSFrameRef *pr
   createWeaveFrame(dst, prv, src, nxt, m2, cfrm);
 }
 
-void TFM::writeDisplay(VSFrameRef *dst, int n, int fmatch, int combed, bool over,
-  int blockN, int xblocks, bool d2vmatch, int *mics, const VSFrameRef *prv,
-  const VSFrameRef *src, const VSFrameRef *nxt)
+void TFM::writeDisplay(VSFrame *dst, int n, int fmatch, int combed, bool over,
+  int blockN, int xblocks, bool d2vmatch, int *mics, const VSFrame *prv,
+  const VSFrame *src, const VSFrame *nxt)
 {
     // Doesn't actually display anything, just sets a frame property which text.Text will display.
 
@@ -671,8 +671,8 @@ void TFM::writeDisplay(VSFrameRef *dst, int n, int fmatch, int combed, bool over
   }
 #undef SZ
 
-  VSMap *props = vsapi->getFramePropsRW(dst);
-  vsapi->propSetData(props, PROP_TFMDisplay, text.c_str(), text.size(), paReplace);
+  VSMap *props = vsapi->getFramePropertiesRW(dst);
+  vsapi->mapSetData(props, PROP_TFMDisplay, text.c_str(), -1, dtUtf8, maReplace);
 }
 
 // override from ovr file
@@ -811,16 +811,16 @@ void TFM::fileOut(int match, int combed, bool d2vfilm, int n, int MICount, int m
 }
 
 
-bool TFM::checkCombed(const VSFrameRef *src, int n, int match,
+bool TFM::checkCombed(const VSFrame *src, int n, int match,
   int *blockN, int &xblocksi, int *mics, bool ddebug)
 {
-    return checkCombedPlanar(src, n, match, blockN, xblocksi, mics, ddebug, vi->format->numPlanes > 1 && chroma);
+    return checkCombedPlanar(src, n, match, blockN, xblocksi, mics, ddebug, vi.format.numPlanes > 1 && chroma);
 }
 
-int TFM::compareFields(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int match1,
+int TFM::compareFields(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
   int match2, int& norm1, int& norm2, int& mtn1, int& mtn2, int n)
 {
-  if (vi->format->bytesPerSample == 1)
+  if (vi.format.bytesPerSample == 1)
     return compareFields_core<uint8_t>(prv, src, nxt, match1, match2, norm1, norm2, mtn1, mtn2, n);
   else
     return compareFields_core<uint16_t>(prv, src, nxt, match1, match2, norm1, norm2, mtn1, mtn2, n);
@@ -828,17 +828,17 @@ int TFM::compareFields(const VSFrameRef *prv, const VSFrameRef *src, const VSFra
 
 
 template<typename pixel_t>
-int TFM::compareFields_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int match1,
+int TFM::compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
   int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, int n)
 {
     (void)n;
 
-  const int bits_per_pixel = vi->format->bitsPerSample;
+  const int bits_per_pixel = vi.format.bitsPerSample;
 
   int ret;
   int y0a, y1a; // exclusion regio
 
-  const int stop = vi->format->numPlanes == 1 || !mChroma ? 1 : 3;
+  const int stop = vi.format.numPlanes == 1 || !mChroma ? 1 : 3;
   const int incl = 1;  // pixel increments: 2 if YUY2 with no-chroma option otherwise 1
 
   uint64_t accumPc = 0, accumNc = 0;
@@ -865,7 +865,7 @@ int TFM::compareFields_core(const VSFrameRef *prv, const VSFrameRef *src, const 
     const pixel_t* nxtp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
     const int nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
 
-    const int startx = 8 >> (plane ? vi->format->subSamplingW : 0);
+    const int startx = 8 >> (plane ? vi.format.subSamplingW : 0);
     const int stopx = Width - startx;
 
     const pixel_t* prvpf = nullptr, * curf = nullptr, * nxtpf = nullptr;
@@ -880,7 +880,7 @@ int TFM::compareFields_core(const VSFrameRef *prv, const VSFrameRef *src, const 
     }
     else 
     { 
-      const int ysubsampling = (plane ? vi->format->subSamplingH : 0);
+      const int ysubsampling = (plane ? vi.format.subSamplingH : 0);
       y0a = y0 >> ysubsampling;
       y1a = y1 >> ysubsampling;
     }
@@ -1176,35 +1176,35 @@ int TFM::compareFields_core(const VSFrameRef *prv, const VSFrameRef *src, const 
   return ret;
 }
 
-int TFM::compareFieldsSlow(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int match1,
+int TFM::compareFieldsSlow(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
   int match2, int& norm1, int& norm2, int& mtn1, int& mtn2, int n)
 {
   if (slow == 2) {
-    if (vi->format->bytesPerSample == 1)
+    if (vi.format.bytesPerSample == 1)
       return compareFieldsSlow2_core<uint8_t>(prv, src, nxt, match1, match2, norm1, norm2, mtn1, mtn2, n);
     else
       return compareFieldsSlow2_core<uint16_t>(prv, src, nxt, match1, match2, norm1, norm2, mtn1, mtn2, n);
   }
-  if (vi->format->bytesPerSample == 1)
+  if (vi.format.bytesPerSample == 1)
     return compareFieldsSlow_core<uint8_t>(prv, src, nxt, match1, match2, norm1, norm2, mtn1, mtn2, n);
   else
     return compareFieldsSlow_core<uint16_t>(prv, src, nxt, match1, match2, norm1, norm2, mtn1, mtn2, n);
 }
 
 template<typename pixel_t>
-int TFM::compareFieldsSlow_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int match1,
+int TFM::compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
   int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, int n)
 {
     (void)n;
 
-  const int bits_per_pixel = vi->format->bitsPerSample;
+  const int bits_per_pixel = vi.format.bitsPerSample;
 
   int ret;
   int y0a, y1a;  // exclusion regio
 
   int tpitch_current;
 
-  const int stop = vi->format->numPlanes == 1 || !mChroma ? 1 : 3;
+  const int stop = vi.format.numPlanes == 1 || !mChroma ? 1 : 3;
   const int incl = 1;  // pixel increments: 2 if YUY2 with no-chroma option otherwise 1
 
   uint64_t accumPc = 0, accumNc = 0;
@@ -1231,7 +1231,7 @@ int TFM::compareFieldsSlow_core(const VSFrameRef *prv, const VSFrameRef *src, co
     const pixel_t* nxtp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
     const int nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
 
-    const int startx = 8 >> (plane ? vi->format->subSamplingW : 0);
+    const int startx = 8 >> (plane ? vi.format.subSamplingW : 0);
     const int stopx = Width - startx;
 
     const pixel_t* prvpf = nullptr, * curf = nullptr, * nxtpf = nullptr;
@@ -1250,7 +1250,7 @@ int TFM::compareFieldsSlow_core(const VSFrameRef *prv, const VSFrameRef *src, co
     }
     else
     { 
-      const int ysubsampling = vi->format->subSamplingH;
+      const int ysubsampling = vi.format.subSamplingH;
       y0a = y0 >> ysubsampling;
       y1a = y1 >> ysubsampling;
       tpitch_current = tpitchuv; // plus compared to simple compareFields
@@ -1582,19 +1582,19 @@ int TFM::compareFieldsSlow_core(const VSFrameRef *prv, const VSFrameRef *src, co
 }
 
 template<typename pixel_t>
-int TFM::compareFieldsSlow2_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int match1,
+int TFM::compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
   int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, int n)
 {
     (void)n;
 
-  const int bits_per_pixel = vi->format->bitsPerSample;
+  const int bits_per_pixel = vi.format.bitsPerSample;
 
   int ret;
   int y0a, y1a;  // exclusion regio
 
   int tpitch_current;
 
-  const int stop = vi->format->numPlanes == 1 || !mChroma ? 1 : 3;
+  const int stop = vi.format.numPlanes == 1 || !mChroma ? 1 : 3;
   int incl = 1;  // pixel increments: 2 if YUY2 with no-chroma option otherwise 1
 
   uint64_t accumPc = 0, accumNc = 0;
@@ -1620,7 +1620,7 @@ int TFM::compareFieldsSlow2_core(const VSFrameRef *prv, const VSFrameRef *src, c
     const pixel_t* nxtp = reinterpret_cast<const pixel_t*>(vsapi->getReadPtr(nxt, plane));
     const int nxt_pitch = vsapi->getStride(nxt, plane) / sizeof(pixel_t);
 
-    const int startx = 8 >> (plane ? vi->format->subSamplingW : 0);
+    const int startx = 8 >> (plane ? vi.format.subSamplingW : 0);
     const int stopx = Width - startx;
 
     const pixel_t* prvpf = nullptr, * curf = nullptr, * nxtpf = nullptr;
@@ -1639,7 +1639,7 @@ int TFM::compareFieldsSlow2_core(const VSFrameRef *prv, const VSFrameRef *src, c
     }
     else 
     { 
-      const int ysubsampling = vi->format->subSamplingH;
+      const int ysubsampling = vi.format.subSamplingH;
       y0a = y0 >> ysubsampling;
       y1a = y1 >> ysubsampling;
       tpitch_current = tpitchuv;
@@ -2476,9 +2476,9 @@ static void checkSceneChangePlanar_2_c(const pixel_t* prvp, const pixel_t* srcp,
 //  }
 //}
 
-bool TFM::checkSceneChange(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int n)
+bool TFM::checkSceneChange(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int n)
 {
-  const int bits_per_pixel = vi->format->bitsPerSample;
+  const int bits_per_pixel = vi.format.bitsPerSample;
   if (bits_per_pixel == 8)
     return checkSceneChange_core<uint8_t>(prv, src, nxt, n, bits_per_pixel);
   else
@@ -2486,7 +2486,7 @@ bool TFM::checkSceneChange(const VSFrameRef *prv, const VSFrameRef *src, const V
 }
 
 template<typename pixel_t>
-bool TFM::checkSceneChange_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt,
+bool TFM::checkSceneChange_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt,
   int n, int bits_per_pixel)
 {
   if (sclast.frame == n + 1) return sclast.sc;
@@ -2560,77 +2560,77 @@ bool TFM::checkSceneChange_core(const VSFrameRef *prv, const VSFrameRef *src, co
   return false;
 }
 
-void TFM::createWeaveFrame(VSFrameRef *dst, const VSFrameRef *prv, const VSFrameRef *src,
-  const VSFrameRef *nxt, int match, int &cfrm) const
+void TFM::createWeaveFrame(VSFrame *dst, const VSFrame *prv, const VSFrame *src,
+  const VSFrame *nxt, int match, int &cfrm) const
 {
   if (cfrm == match)
     return;
 
-  const int np = vi->format->numPlanes;
+  const int np = vi.format.numPlanes;
   for (int b = 0; b < np; ++b)
   {
     const int plane = b;
     if (match == 0)
     {
-      vs_bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
+      vsh::bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
         vsapi->getReadPtr(src, plane) + (1 - field)*vsapi->getStride(src, plane), vsapi->getStride(src, plane) << 1,
-        vsapi->getFrameWidth(src, plane) * vi->format->bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
-      vs_bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
+        vsapi->getFrameWidth(src, plane) * vi.format.bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
+      vsh::bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
         vsapi->getReadPtr(prv, plane) + field*vsapi->getStride(prv, plane), vsapi->getStride(prv, plane) << 1,
-        vsapi->getFrameWidth(prv, plane) * vi->format->bytesPerSample, vsapi->getFrameHeight(prv, plane) >> 1);
+        vsapi->getFrameWidth(prv, plane) * vi.format.bytesPerSample, vsapi->getFrameHeight(prv, plane) >> 1);
     }
     else if (match == 1)
     {
-      vs_bitblt(vsapi->getWritePtr(dst, plane), vsapi->getStride(dst, plane), vsapi->getReadPtr(src, plane),
-        vsapi->getStride(src, plane), vsapi->getFrameWidth(src, plane) * vi->format->bytesPerSample, vsapi->getFrameHeight(src, plane));
+      vsh::bitblt(vsapi->getWritePtr(dst, plane), vsapi->getStride(dst, plane), vsapi->getReadPtr(src, plane),
+        vsapi->getStride(src, plane), vsapi->getFrameWidth(src, plane) * vi.format.bytesPerSample, vsapi->getFrameHeight(src, plane));
     }
     else if (match == 2)
     {
-      vs_bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
+      vsh::bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
         vsapi->getReadPtr(src, plane) + (1 - field)*vsapi->getStride(src, plane), vsapi->getStride(src, plane) << 1,
-        vsapi->getFrameWidth(src, plane) * vi->format->bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
-      vs_bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
+        vsapi->getFrameWidth(src, plane) * vi.format.bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
+      vsh::bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
         vsapi->getReadPtr(nxt, plane) + field*vsapi->getStride(nxt, plane), vsapi->getStride(nxt, plane) << 1,
-        vsapi->getFrameWidth(nxt, plane) * vi->format->bytesPerSample, vsapi->getFrameHeight(nxt, plane) >> 1);
+        vsapi->getFrameWidth(nxt, plane) * vi.format.bytesPerSample, vsapi->getFrameHeight(nxt, plane) >> 1);
     }
     else if (match == 3)
     {
-      vs_bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
+      vsh::bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
         vsapi->getReadPtr(src, plane) + field*vsapi->getStride(src, plane), vsapi->getStride(src, plane) << 1,
-        vsapi->getFrameWidth(src, plane) * vi->format->bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
-      vs_bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
+        vsapi->getFrameWidth(src, plane) * vi.format.bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
+      vsh::bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
         vsapi->getReadPtr(prv, plane) + (1 - field)*vsapi->getStride(prv, plane), vsapi->getStride(prv, plane) << 1,
-        vsapi->getFrameWidth(prv, plane) * vi->format->bytesPerSample, vsapi->getFrameHeight(prv, plane) >> 1);
+        vsapi->getFrameWidth(prv, plane) * vi.format.bytesPerSample, vsapi->getFrameHeight(prv, plane) >> 1);
     }
     else if (match == 4)
     {
-      vs_bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
+      vsh::bitblt(vsapi->getWritePtr(dst, plane) + field*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
         vsapi->getReadPtr(src, plane) + field*vsapi->getStride(src, plane), vsapi->getStride(src, plane) << 1,
-        vsapi->getFrameWidth(src, plane) * vi->format->bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
-      vs_bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
+        vsapi->getFrameWidth(src, plane) * vi.format.bytesPerSample, vsapi->getFrameHeight(src, plane) >> 1);
+      vsh::bitblt(vsapi->getWritePtr(dst, plane) + (1 - field)*vsapi->getStride(dst, plane), vsapi->getStride(dst, plane) << 1,
         vsapi->getReadPtr(nxt, plane) + (1 - field)*vsapi->getStride(nxt, plane), vsapi->getStride(nxt, plane) << 1,
-        vsapi->getFrameWidth(nxt, plane) * vi->format->bytesPerSample, vsapi->getFrameHeight(nxt, plane) >> 1);
+        vsapi->getFrameWidth(nxt, plane) * vi.format.bytesPerSample, vsapi->getFrameHeight(nxt, plane) >> 1);
     }
 //    else throw TIVTCError("TFM:  an unknown error occurred (no such match!)");
   }
   cfrm = match;
 }
 
-void TFM::putFrameProperties(VSFrameRef *dst, int match, int combed, bool d2vfilm, const int mics[5]) const
+void TFM::putFrameProperties(VSFrame *dst, int match, int combed, bool d2vfilm, const int mics[5]) const
 {
-    VSMap *props = vsapi->getFramePropsRW(dst);
+    VSMap *props = vsapi->getFramePropertiesRW(dst);
 
-    vsapi->propSetInt(props, PROP_TFMMATCH, match, paReplace);
-    vsapi->propSetInt(props, PROP_Combed, combed > 1, paReplace);
-    vsapi->propSetInt(props, PROP_TFMD2VFilm, d2vfilm, paReplace);
-    vsapi->propSetInt(props, PROP_TFMField, field, paReplace);
+    vsapi->mapSetInt(props, PROP_TFMMATCH, match, maReplace);
+    vsapi->mapSetInt(props, PROP_Combed, combed > 1, maReplace);
+    vsapi->mapSetInt(props, PROP_TFMD2VFilm, d2vfilm, maReplace);
+    vsapi->mapSetInt(props, PROP_TFMField, field, maReplace);
     for (int i = 0; i < 5; i++)
-        vsapi->propSetInt(props, PROP_TFMMics, mics[i], i ? paAppend : paReplace);
-    vsapi->propSetInt(props, PROP_TFMPP, PP, paReplace);
+        vsapi->mapSetInt(props, PROP_TFMMics, mics[i], i ? maAppend : maReplace);
+    vsapi->mapSetInt(props, PROP_TFMPP, PP, maReplace);
 }
 
 //template<typename pixel_t>
-//void TFM::putHint_core(VSFrameRef *dst, int match, int combed, bool d2vfilm)
+//void TFM::putHint_core(VSFrame *dst, int match, int combed, bool d2vfilm)
 //{
 //  pixel_t *p = reinterpret_cast<pixel_t *>(vsapi->getWritePtr(dst, 0));
 //  pixel_t *srcp = p;
@@ -2734,7 +2734,7 @@ template void TFM::buildABSDiffMask<uint16_t>(const uint8_t* prvp, const uint8_t
 //  return v;
 //}
 
-TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const char* _ovr,
+TFM::TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char* _ovr,
   const char* _input, const char* _output, const char * _outputC, bool _debug, bool _display,
   int _slow, bool _mChroma, int _cNum, int _cthresh, int _MI, bool _chroma, int _blockx,
   int _blocky, int _y0, int _y1, const char* _d2v, int _ovrDefault, int _flags, double _scthresh,
@@ -2749,7 +2749,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
   batch(_batch), ubsco(_ubsco), mmsco(_mmsco), opt(_opt), cArray(nullptr, nullptr), tbuffer(nullptr, nullptr),
   map(nullptr, nullptr), cmask(nullptr, nullptr)
 {
-    vi = vsapi->getVideoInfo(child);
+    vi = *vsapi->getVideoInfo(child);
 
   int z, w, q = 0, b, i, count, last, fieldt, firstLine, qt;
   int countOvrS, countOvrM;
@@ -2761,21 +2761,21 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
   cpuFlags = *getCPUFeatures();
   if (opt == 0) memset(&cpuFlags, 0, sizeof(cpuFlags));
 
-  if (!vi->format || vi->width == 0 || vi->height == 0)
+  if (vi.format.colorFamily == cfUndefined || vi.width == 0 || vi.height == 0)
       throw TIVTCError("TFM: the input clip must have constant format and dimensions.");
 
-  if (vi->format->colorFamily == cmGray)
+  if (vi.format.colorFamily == cfGray)
       chroma = false;
 
-  if (vi->format->bitsPerSample > 16)
+  if (vi.format.bitsPerSample > 16)
     throw TIVTCError("TFM:  only 8-16 bit formats supported!");
-  if (vi->format->sampleType != stInteger)
+  if (vi.format.sampleType != stInteger)
       throw TIVTCError("TFM: only integer formats supported!");
-  if (vi->format->colorFamily != cmYUV)
+  if (vi.format.colorFamily != cfYUV)
     throw TIVTCError("TFM:  YUV data only!");
-  if (vi->height & 1 || vi->width & 1)
+  if (vi.height & 1 || vi.width & 1)
     throw TIVTCError("TFM:  height and width must be divisible by 2!");
-  if (vi->height < 6 || vi->width < 64)
+  if (vi.height < 6 || vi.width < 64)
     throw TIVTCError("TFM:  frame dimensions too small!");
   if (mode < 0 || mode > 7)
     throw TIVTCError("TFM:  mode must be set to 0, 1, 2, 3, 4, 5, 6, or 7!");
@@ -2791,7 +2791,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
   if (blocky != 4 && blocky != 8 && blocky != 16 && blocky != 32 && blocky != 64 &&
     blocky != 128 && blocky != 256 && blocky != 512 && blocky != 1024 && blocky != 2048)
     throw TIVTCError("TFM:  illegal blocky size!");
-  if (y0 != y1 && (y0 < 0 || y1 < 0 || y0 > y1 || y1 > vi->height || y0 > vi->height))
+  if (y0 != y1 && (y0 < 0 || y1 < 0 || y0 > y1 || y1 > vi.height || y0 > vi.height))
     throw TIVTCError("TFM:  bad y0 and y1 exclusion band values!");
   if (ovrDefault < 0 || ovrDefault > 2)
     throw TIVTCError("TFM:  ovrDefault must be set to 0, 1, or 2!");
@@ -2819,7 +2819,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
 //  child->SetCacheHints(CACHE_GENERIC, 3);  // fixed to diameter (07/30/2005)
 
   lastMatch.frame = lastMatch.field = lastMatch.combed = lastMatch.match = -20;
-  nfrms = vi->numFrames - 1;
+  nfrms = vi.numFrames - 1;
   mode_origSaved = mode;
   PP_origSaved = PP;
   MI_origSaved = MI;
@@ -2839,7 +2839,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
   
   // no high bit depth scaling here
   // Warning: this mod16 must match with the calculation in "checkSceneChange"
-  diffmaxsc = int((double(((vi->width >> 4) << 4)*vi->height * (235-16))*scthresh*0.5) / 100.0);
+  diffmaxsc = int((double(((vi.width >> 4) << 4)*vi.height * (235-16))*scthresh*0.5) / 100.0);
 
   sclast.frame = -20;
   sclast.sc = true;
@@ -2847,16 +2847,18 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
   if (mode == 1 || mode == 2 || mode == 3 || mode == 5 || mode == 6 || mode == 7 ||
     PP > 0 || micout > 0 || micmatching > 0)
   {
-    cArray = decltype(cArray) (vs_aligned_malloc<int>((((vi->width + xhalf) >> xshift) + 1)*(((vi->height + yhalf) >> yshift) + 1) * 4 * sizeof(int), 16), &vs_aligned_free);
+    cArray = decltype(cArray) (vsh::vsh_aligned_malloc<int>((((vi.width + xhalf) >> xshift) + 1)*(((vi.height + yhalf) >> yshift) + 1) * 4 * sizeof(int), 16), &vsh::vsh_aligned_free);
     if (!cArray) {
         throw TIVTCError("TFM:  malloc failure (cArray)!");
     }
-    cmask = decltype(cmask) (vsapi->newVideoFrame(vi->format, vi->width, vi->height, nullptr, core), vsapi->freeFrame);
+    cmask = decltype(cmask) (vsapi->newVideoFrame(&vi.format, vi.width, vi.height, nullptr, core), vsapi->freeFrame);
   }
 
   // prepare map format: always 8 bits
-  const VSFormat *map_format = vsapi->registerFormat(vi->format->colorFamily, vi->format->sampleType, 8, vi->format->subSamplingW, vi->format->subSamplingH, core);
-  map = decltype(map) (vsapi->newVideoFrame(map_format, vi->width, vi->height, nullptr, core), vsapi->freeFrame);
+  VSVideoFormat map_format{};
+  if (!vsapi->queryVideoFormat(&map_format, vi.format.colorFamily, vi.format.sampleType, 8, vi.format.subSamplingW, vi.format.subSamplingH, core))
+      throw TIVTCError("TFM: failed to query the internal map format.");
+  map = decltype(map) (vsapi->newVideoFrame(&map_format, vi.width, vi.height, nullptr, core), vsapi->freeFrame);
 
   if (d2v.size())
   {
@@ -2872,14 +2874,14 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
         char error[512] = "TFM: Couldn't fetch the first frame from the input clip to determine the clip's field order. Reason: ";
         size_t len = strlen(error);
 
-        const VSFrameRef *first_frame = vsapi->getFrame(0, child, error + len, 512 - len);
+        const VSFrame *first_frame = vsapi->getFrame(0, child, error + len, 512 - len);
         if (first_frame == nullptr) {
             throw TIVTCError(error);
         }
-        const VSMap *props = vsapi->getFramePropsRO(first_frame);
+        const VSMap *props = vsapi->getFramePropertiesRO(first_frame);
 
         int err;
-        int64_t field_based = vsapi->propGetInt(props, "_FieldBased", 0, &err);
+        int64_t field_based = vsapi->mapGetInt(props, "_FieldBased", 0, &err);
         vsapi->freeFrame(first_frame);
         if (err) {
             throw TIVTCError("TFM: Couldn't find the '_FieldBased' frame property. The 'order' parameter must be used.");
@@ -2901,15 +2903,15 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
 
   {
     // tbuffer is 8 or 16 bits wide
-    const int pixelsize = vi->format->bytesPerSample;
-    tpitchy = ALIGN_NUMBER(vi->width * pixelsize, ALIGN_BUF);
-    const int widthUV = vi->format->numPlanes > 1 ? vi->width >> vi->format->subSamplingW : 0;
+    const int pixelsize = vi.format.bytesPerSample;
+    tpitchy = ALIGN_NUMBER(vi.width * pixelsize, ALIGN_BUF);
+    const int widthUV = vi.format.numPlanes > 1 ? vi.width >> vi.format.subSamplingW : 0;
     tpitchuv = ALIGN_NUMBER(widthUV * pixelsize, ALIGN_BUF);
   }
 #undef ALIGN_NUMBER
 
   // 16 would be is enough for sse2 but maybe we'll do AVX2?
-  tbuffer = decltype(tbuffer) (vs_aligned_malloc<uint8_t>((vi->height >> 1) * tpitchy, ALIGN_BUF), &vs_aligned_free);
+  tbuffer = decltype(tbuffer) (vsh::vsh_aligned_malloc<uint8_t>((vi.height >> 1) * tpitchy, ALIGN_BUF), &vsh::vsh_aligned_free);
   if (!tbuffer) throw TIVTCError("TFM:  malloc failure (tbuffer)!");
   mode7_field = field;
   if (input.size())
@@ -2917,11 +2919,11 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
     bool d2vmarked, micmarked;
     if ((f = decltype (f)(tivtc_fopen(input.c_str(), "r"), &fclose)) != nullptr)
     {
-      ovrArray.resize(vi->numFrames, 255);
+      ovrArray.resize(vi.numFrames, 255);
 
       if (d2vfilmarray.size() == 0)
       {
-        d2vfilmarray.resize(vi->numFrames + 1, 0);
+        d2vfilmarray.resize(vi.numFrames + 1, 0);
       }
       fieldt = fieldO;
       firstLine = 0;
@@ -3086,7 +3088,7 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
       {
         if (ovrDefault == 1) q = 0;
         else if (ovrDefault == 2) q = COMBED;
-        for (int h = 0; h < vi->numFrames; ++h)
+        for (int h = 0; h < vi.numFrames; ++h)
         {
           ovrArray[h] &= 0xDF;
           ovrArray[h] |= 0x10;
@@ -3108,12 +3110,12 @@ TFM::TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const ch
       }
       if (countOvrM > 0 && ovrArray.size() == 0)
       {
-        ovrArray.resize(vi->numFrames, 255);
+        ovrArray.resize(vi.numFrames, 255);
         if (ovrDefault != 0)
         {
           if (ovrDefault == 1) q = 0;
           else if (ovrDefault == 2) q = COMBED;
-          for (int h = 0; h < vi->numFrames; ++h)
+          for (int h = 0; h < vi.numFrames; ++h)
           {
             ovrArray[h] &= 0xDF;
             ovrArray[h] |= 0x10;
@@ -3497,12 +3499,12 @@ emptyovr:
     {
       _fullpath(outputFull, output.c_str(), MAX_PATH);
       calcCRC(child, 15, outputCrc, vsapi);
-      outArray.resize(vi->numFrames, 0);
-      moutArray.resize(vi->numFrames, -1);
+      outArray.resize(vi.numFrames, 0);
+      moutArray.resize(vi.numFrames, -1);
       if (micout > 0)
       {
         int sn = micout == 1 ? 3 : 5;
-        moutArrayE.resize(vi->numFrames * sn, -20);
+        moutArrayE.resize(vi.numFrames * sn, -20);
       }
     }
     else {
@@ -3516,7 +3518,7 @@ emptyovr:
       _fullpath(outputCFull, outputC.c_str(), MAX_PATH);
       if (outArray.size() == 0)
       {
-        outArray.resize(vi->numFrames, 0);
+        outArray.resize(vi.numFrames, 0);
       }
     }
     else {
@@ -3543,7 +3545,7 @@ TFM::~TFM()
         int match, sn = micout == 1 ? 3 : 5;
         if (moutArrayE.size())
         {
-          for (int i = 0; i < sn * vi->numFrames; ++i)
+          for (int i = 0; i < sn * vi.numFrames; ++i)
           {
             if (moutArrayE[i] == -20) moutArrayE[i] = -1;
           }
@@ -3620,7 +3622,7 @@ void TFM::generateOvrHelpOutput(FILE *f) const
   int ccount = 0, mcount = 0, acount = 0;
   int ordert = /*order == -1 ? child->GetParity(0) :*/ order; /// can order be -1 at this point? I think not, but test it
   int ao = fieldO^ordert ? 0 : 2;
-  for (int i = 0; i < vi->numFrames; ++i)
+  for (int i = 0; i < vi.numFrames; ++i)
   {
     if (!(outArray[i] & FILE_ENTRY)) return;
     const int temp = outArray[i] & 0x07;
@@ -3635,7 +3637,7 @@ void TFM::generateOvrHelpOutput(FILE *f) const
   if (PP == 0) fprintf(f, "#   none detected (PP=0)\n");
   else if (ccount)
   {
-    for (int i = 0; i < vi->numFrames; ++i)
+    for (int i = 0; i < vi.numFrames; ++i)
     {
       if ((outArray[i] & 0x30) == 0x30)
       {
@@ -3651,7 +3653,7 @@ void TFM::generateOvrHelpOutput(FILE *f) const
   else if (ccount)
   {
     int icount = 0, pcount = 0, rcount = 0, i = 0;
-    for (; i < vi->numFrames; ++i)
+    for (; i < vi.numFrames; ++i)
     {
       if ((outArray[i] & 0x30) == 0x30)
       {
@@ -3684,13 +3686,13 @@ void TFM::generateOvrHelpOutput(FILE *f) const
   {
     int maxcp = int(MI*0.85), count = 0;
     int mt = std::max(int(MI*0.1875), 5);
-    for (int i = 0; i < vi->numFrames; ++i)
+    for (int i = 0; i < vi.numFrames; ++i)
     {
       if ((outArray[i] & 0x30) == 0x30)
         continue;
       const int prev = i > 0 ? moutArray[i - 1] : 0;
       const int curr = moutArray[i];
-      const int next = i < vi->numFrames - 1 ? moutArray[i + 1] : 0;
+      const int next = i < vi.numFrames - 1 ? moutArray[i + 1] : 0;
       if (curr <= MI && ((curr >= mt && curr > next * 2 && curr > prev * 2 &&
         curr - next > mt && curr - prev > mt) || (curr > maxcp) ||
         (prev > MI && next > MI && curr > MI*0.5) ||
@@ -3708,7 +3710,7 @@ void TFM::generateOvrHelpOutput(FILE *f) const
   if (acount)
   {
     int lastf = -1, count = 0, i = 0;
-    for (; i < vi->numFrames; ++i)
+    for (; i < vi.numFrames; ++i)
     {
       const int temp = outArray[i] & 0x07;
       if (temp == 3 || temp == 4 || temp == ao)

@@ -1137,15 +1137,15 @@ void compute_sum_16x8_sse2_luma(const uint8_t *srcp, int pitch, int &sum)
   sum = _mm_cvtsi128_si32(tmpsum);
 }
 
-void copyFrame(VSFrameRef *dst, const VSFrameRef *src, const VSAPI *vsapi)
+void copyFrame(VSFrame *dst, const VSFrame *src, const VSAPI *vsapi)
 {
   // bit depth independent
-    const VSFormat *format = vsapi->getFrameFormat(src);
+    const VSVideoFormat *format = vsapi->getVideoFrameFormat(src);
   const int np = format->numPlanes;
   for (int b = 0; b < np; ++b)
   {
     const int plane = b;
-    vs_bitblt(vsapi->getWritePtr(dst, plane), vsapi->getStride(dst, plane), vsapi->getReadPtr(src, plane),
+    vsh::bitblt(vsapi->getWritePtr(dst, plane), vsapi->getStride(dst, plane), vsapi->getReadPtr(src, plane),
       vsapi->getStride(src, plane), vsapi->getFrameWidth(src, plane) * format->bytesPerSample, vsapi->getFrameHeight(src, plane));
   }
 }

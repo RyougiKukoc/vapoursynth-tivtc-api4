@@ -38,18 +38,18 @@
 #include <memory>
 #include <vector>
 #include <string>
-#include <VapourSynth.h>
-#include <VSHelper.h>
+#include <VapourSynth4.h>
+#include <VSHelper4.h>
 #include "calcCRC.h"
 #include "internal.h"
 #include "cpufeatures.h"
 
 
 template<int planarType>
-void FillCombedPlanarUpdateCmaskByUV(VSFrameRef* cmask, const VSAPI *vsapi);
+void FillCombedPlanarUpdateCmaskByUV(VSFrame* cmask, const VSAPI *vsapi);
 
 template<typename pixel_t>
-void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chroma, int cpuFlags, int metric, const VSFrameRef *src, VSFrameRef* cmask, const VSAPI *vsapi);
+void checkCombedPlanarAnalyze_core(const VSVideoInfo *vi, int cthresh, bool chroma, int cpuFlags, int metric, const VSFrame *src, VSFrame* cmask, const VSAPI *vsapi);
 
 struct MTRACK {
   int frame, match;
@@ -66,7 +66,7 @@ class TFM
 {
 private:
     const VSAPI *vsapi;
-    VSNodeRef *child;
+    VSNode *child;
 
   CPUFeatures cpuFlags;
 
@@ -105,7 +105,7 @@ private:
   uint32_t outputCrc;
   unsigned long diffmaxsc;
   
-  std::unique_ptr<int, decltype (&vs_aligned_free)> cArray; // modified in GetFrame
+  std::unique_ptr<int, decltype (&vsh::vsh_aligned_free)> cArray; // modified in GetFrame
   std::vector<int> setArray;
 
   std::vector<bool> trimArray;
@@ -116,7 +116,7 @@ private:
   std::vector<uint8_t> outArray; // modified in GetFrame, but only the element corresponding to frame n, so multithreaded access is fine
   std::vector<uint8_t> d2vfilmarray;
 
-  std::unique_ptr<uint8_t, decltype (&vs_aligned_free)> tbuffer; // absdiff buffer // modified in GetFrame
+  std::unique_ptr<uint8_t, decltype (&vsh::vsh_aligned_free)> tbuffer; // absdiff buffer // modified in GetFrame
   int tpitchy, tpitchuv;
 
   std::vector<int> moutArray; // modified in GetFrame, but only the element corresponding to frame n
@@ -125,8 +125,8 @@ private:
   MTRACK lastMatch; // modified in GetFrame
   SCTRACK sclast;  // modified in GetFrame
   char outputFull[MAX_PATH], outputCFull[MAX_PATH];
-  std::unique_ptr<VSFrameRef, decltype (VSAPI::freeFrame)> map; // modified in GetFrame
-  std::unique_ptr<VSFrameRef, decltype (VSAPI::freeFrame)> cmask; // modified in GetFrame
+  std::unique_ptr<VSFrame, decltype (VSAPI::freeFrame)> map; // modified in GetFrame
+  std::unique_ptr<VSFrame, decltype (VSAPI::freeFrame)> cmask; // modified in GetFrame
 
   template<typename pixel_t>
   void buildDiffMapPlane_Planar(const uint8_t *prvp, const uint8_t *nxtp,
@@ -143,44 +143,44 @@ private:
 
   void fileOut(int match, int combed, bool d2vfilm, int n, int MICount, int mics[5]);
 
-  int compareFields(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int match1,
+  int compareFields(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
     int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, int n);
   template<typename pixel_t>
-  int compareFields_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int match1,
+  int compareFields_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
     int match2, int& norm1, int& norm2, int& mtn1, int& mtn2, int n);
 
-  int compareFieldsSlow(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int match1,
+  int compareFieldsSlow(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
     int match2, int &norm1, int &norm2, int &mtn1, int &mtn2, int n);
   template<typename pixel_t>
-  int compareFieldsSlow_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int match1,
+  int compareFieldsSlow_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
     int match2, int& norm1, int& norm2, int& mtn1, int& mtn2, int n);
   template<typename pixel_t>
-  int compareFieldsSlow2_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int match1,
+  int compareFieldsSlow2_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int match1,
     int match2, int& norm1, int& norm2, int& mtn1, int& mtn2, int n);
 
-  void createWeaveFrame(VSFrameRef *dst, const VSFrameRef *prv, const VSFrameRef *src,
-    const VSFrameRef *nxt, int match, int &cfrm) const;
+  void createWeaveFrame(VSFrame *dst, const VSFrame *prv, const VSFrame *src,
+    const VSFrame *nxt, int match, int &cfrm) const;
   
   bool getMatchOvr(int n, int &match, int &combed, bool &d2vmatch, bool isSC);
   void getSettingOvr(int n);
   
-  bool checkCombed(const VSFrameRef *src, int n, int match,
+  bool checkCombed(const VSFrame *src, int n, int match,
     int *blockN, int &xblocksi, int *mics, bool ddebug);
-  bool checkCombedPlanar(const VSFrameRef *src, int n, int match,
+  bool checkCombedPlanar(const VSFrame *src, int n, int match,
     int *blockN, int &xblocksi, int *mics, bool ddebug, bool _chroma);
   template<typename pixel_t>
-  bool checkCombedPlanar_core(const VSFrameRef *src, int n, int match,
+  bool checkCombedPlanar_core(const VSFrame *src, int n, int match,
     int* blockN, int& xblocksi, int* mics, bool ddebug, int bits_per_pixel);
-//  bool checkCombedYUY2(const VSFrameRef *src, int n, int match,
+//  bool checkCombedYUY2(const VSFrame *src, int n, int match,
 //    int *blockN, int &xblocksi, int *mics, bool ddebug, bool chroma,int cthresh);
   
-  void writeDisplay(VSFrameRef *dst, int n, int fmatch, int combed, bool over,
-    int blockN, int xblocks, bool d2vmatch, int *mics, const VSFrameRef *prv,
-    const VSFrameRef *src, const VSFrameRef *nxt);
+  void writeDisplay(VSFrame *dst, int n, int fmatch, int combed, bool over,
+    int blockN, int xblocks, bool d2vmatch, int *mics, const VSFrame *prv,
+    const VSFrame *src, const VSFrame *nxt);
 
-  void putFrameProperties(VSFrameRef *dst, int match, int combed, bool d2vfilm, const int mics[5]) const;
+  void putFrameProperties(VSFrame *dst, int match, int combed, bool d2vfilm, const int mics[5]) const;
 //  template<typename pixel_t>
-//  void putHint_core(VSFrameRef *dst, int match, int combed, bool d2vfilm);
+//  void putHint_core(VSFrame *dst, int match, int combed, bool d2vfilm);
 
   void parseD2V();
   int D2V_find_and_correct(std::vector<int> &array, bool &found, int &tff) const;
@@ -196,16 +196,16 @@ private:
   bool checkInPatternD2V(const std::vector<int> &array, int i) const;
   int fillTrimArray(int frames);
 
-  bool checkSceneChange(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int n);
+  bool checkSceneChange(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int n);
   template<typename pixel_t>
-  bool checkSceneChange_core(const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt,
+  bool checkSceneChange_core(const VSFrame *prv, const VSFrame *src, const VSFrame *nxt,
     int n, int bits_per_pixel);
 
-  void micChange(int n, int m1, int m2, VSFrameRef *dst, const VSFrameRef *prv,
-    const VSFrameRef *src, const VSFrameRef *nxt, int &fmatch,
+  void micChange(int n, int m1, int m2, VSFrame *dst, const VSFrame *prv,
+    const VSFrame *src, const VSFrame *nxt, int &fmatch,
     int &combed, int &cfrm) const;
-  void checkmm(int &cmatch, int m1, int m2, VSFrameRef *dst, int &dfrm, VSFrameRef *tmp, int &tfrm,
-    const VSFrameRef *prv, const VSFrameRef *src, const VSFrameRef *nxt, int n,
+  void checkmm(int &cmatch, int m1, int m2, VSFrame *dst, int &dfrm, VSFrame *tmp, int &tfrm,
+    const VSFrame *prv, const VSFrame *src, const VSFrame *nxt, int n,
     int *blockN, int &xblocks, int *mics);
 
   // O.K. common parts with TDeint
@@ -217,12 +217,12 @@ private:
   void generateOvrHelpOutput(FILE *f) const;
 
 public:
-      const VSVideoInfo *vi;
+      VSVideoInfo vi;
 
-  const VSFrameRef *GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core);
+  const VSFrame *GetFrame(int n, int activationReason, VSFrameContext *frameCtx, VSCore *core);
 /// implement as tivtc.IsCombed(), if it's different from tdm.IsCombed().
   //  AVSValue ConditionalIsCombedTIVTC(int n, IScriptEnvironment* env);
-  TFM(VSNodeRef *_child, int _order, int _field, int _mode, int _PP, const char* _ovr, const char* _input,
+  TFM(VSNode *_child, int _order, int _field, int _mode, int _PP, const char* _ovr, const char* _input,
     const char* _output, const char * _outputC, bool _debug, bool _display, int _slow,
     bool _mChroma, int _cNum, int _cthresh, int _MI, bool _chroma, int _blockx, int _blocky,
     int _y0, int _y1, const char* _d2v, int _ovrDefault, int _flags, double _scthresh, int _micout,

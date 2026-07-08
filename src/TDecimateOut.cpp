@@ -179,7 +179,7 @@ void TDecimate::addMetricCycle(const Cycle &j)
   }
 }
 
-void TDecimate::displayOutput(VSFrameRef *dst, int n,
+void TDecimate::displayOutput(VSFrame *dst, int n,
   int ret, bool film, double amount1, double amount2, int f1, int f2)
 {
 //  int y = 0;
@@ -334,6 +334,6 @@ void TDecimate::displayOutput(VSFrameRef *dst, int n,
 //  }
 #undef SZ
 
-    VSMap *props = vsapi->getFramePropsRW(dst);
-    vsapi->propSetData(props, PROP_TDecimateDisplay, text.c_str(), text.size(), paReplace);
+    VSMap *props = vsapi->getFramePropertiesRW(dst);
+    vsapi->mapSetData(props, PROP_TDecimateDisplay, text.c_str(), -1, dtUtf8, maReplace);
 }

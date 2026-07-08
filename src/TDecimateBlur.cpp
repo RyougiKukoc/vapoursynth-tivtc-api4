@@ -27,14 +27,14 @@
 #include "TDecimateASM.h"
 
 // hbd ready
-void blurFrame(const VSFrameRef *src, VSFrameRef *dst, int iterations,
+void blurFrame(const VSFrame *src, VSFrame *dst, int iterations,
   bool bchroma, const CPUFeatures *cpuFlags, VSCore *core, const VSAPI *vsapi)
 {
-    const VSFormat *format = vsapi->getFrameFormat(src);
+    const VSVideoFormat *format = vsapi->getVideoFrameFormat(src);
     int width = vsapi->getFrameWidth(src, 0);
     int height = vsapi->getFrameHeight(src, 0);
 
-  VSFrameRef *tmp = vsapi->newVideoFrame(format, width, height, nullptr, core);
+  VSFrame *tmp = vsapi->newVideoFrame(format, width, height, nullptr, core);
   HorizontalBlur(src, tmp, bchroma, cpuFlags, vsapi);
   VerticalBlur(tmp, dst, bchroma, cpuFlags, vsapi);
   for (int i = 1; i < iterations; ++i)
@@ -45,10 +45,10 @@ void blurFrame(const VSFrameRef *src, VSFrameRef *dst, int iterations,
   vsapi->freeFrame(tmp);
 }
 
-void HorizontalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
+void HorizontalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
   const CPUFeatures *cpuFlags, const VSAPI *vsapi)
 {
-    const VSFormat *format = vsapi->getFrameFormat(src);
+    const VSVideoFormat *format = vsapi->getVideoFrameFormat(src);
 
   const int np = !bchroma ? 1 : format->numPlanes;
 
@@ -162,10 +162,10 @@ void VerticalBlur_SSE2(const uint8_t* srcp, uint8_t* dstp, int src_pitch,
   }
 }
 
-void VerticalBlur(const VSFrameRef *src, VSFrameRef *dst, bool bchroma,
+void VerticalBlur(const VSFrame *src, VSFrame *dst, bool bchroma,
   const CPUFeatures *cpuFlags, const VSAPI *vsapi)
 {
-    const VSFormat *format = vsapi->getFrameFormat(src);
+    const VSVideoFormat *format = vsapi->getVideoFrameFormat(src);
 
   const int np = !bchroma ? 1 : format->numPlanes;
 
