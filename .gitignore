@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+
+_deps/
+dist/
+verification-r73-r77/
+
+build-*/
+cmake-build-*/
