@@ -42,14 +42,16 @@ jobs:
         shell: powershell
         run: python tools/ci_prepare_msys2.py
 
-      - name: Build Windows payload and wheel
+      - name: Build Windows payload
+        shell: msys2 {0}
+        run: |
+          /ucrt64/bin/python tools/ci_build_msys2.py --clean
+
+      - name: Build Windows wheel
         shell: powershell
         run: |
-          $env:TIVTC_FORCE_BUILD = '1'
-          python tools/ci_build_msys2.py --clean
           python tools\package_plugin_zip.py --input-dir dist\msys2-ucrt64 --output dist\tivtc-msys2-ucrt64.zip
           $env:TIVTC_PREBUILT_URL = Join-Path $PWD 'dist\tivtc-msys2-ucrt64.zip'
-          Remove-Item Env:\TIVTC_FORCE_BUILD -ErrorAction SilentlyContinue
           python -m build --wheel --no-isolation --outdir dist\wheels
 
       - name: Check and explicitly load Windows payload

@@ -140,11 +140,7 @@ def write_vapoursynth_pc(pc_dir: Path, vs_pkg: Path) -> Path:
     return pc
 
 
-def resolve_pkg_config(env: dict[str, str], prefixes: list[Path], vs_root: Path) -> str:
-    shim = vs_root / "pkg-config.cmd"
-    if shim.exists():
-        return str(shim)
-
+def resolve_pkg_config(env: dict[str, str], prefixes: list[Path]) -> str:
     candidates: list[Path] = []
     for prefix in prefixes:
         candidates.extend(
@@ -261,7 +257,7 @@ def main(argv: list[str]) -> int:
     if "CXX" not in env:
         env["CXX"] = find_tool("g++", env=env)
     if "PKG_CONFIG" not in env:
-        env["PKG_CONFIG"] = resolve_pkg_config(env, msys2_prefixes, vs_root)
+        env["PKG_CONFIG"] = resolve_pkg_config(env, msys2_prefixes)
 
     meson = find_tool("meson", env=env)
     find_tool("ninja", env=env)
