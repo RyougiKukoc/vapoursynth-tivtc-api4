@@ -106,7 +106,9 @@ jobs:
             "$py" tools/ci_make_release_assets.py --clean --package-dir dist/linux-x86_64/tivtc --wheel-dir dist/wheels-linux --out-dir dist/release-assets-linux --zip-name tivtc-linux-x86_64.zip --json
             "$py" tools/check_package_layout.py dist/release-assets-linux/tivtc-linux-x86_64.zip --plugin-dll tivtc.so --require-manifest --require-top-level-dir --forbid-vapoursynth-prefix
             find dist/linux-x86_64/tivtc -type f -name "*.so*" -print -exec readelf --version-info {} \; | tee dist/linux-x86_64/abi.txt
-            "$py" -c "import re; text=open('dist/linux-x86_64/abi.txt').read(); values=[tuple(map(int, x.split('.'))) for x in re.findall(r'GLIBC_(\\d+\\.\\d+)', text)]; assert all(value <= (2, 17) for value in values), values"
+            ! grep -q GLIBC_2.1[89] dist/linux-x86_64/abi.txt
+            ! grep -q GLIBC_2.[2-9][0-9] dist/linux-x86_64/abi.txt
+            ! grep -q GLIBC_[3-9] dist/linux-x86_64/abi.txt
           '
 
       - uses: actions/upload-artifact@v4
