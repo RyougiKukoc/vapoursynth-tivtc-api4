@@ -19,7 +19,8 @@ from packaging import tags
 ROOT = Path(__file__).resolve().parent
 PLUGIN_NAME = "tivtc"
 DEFAULT_REPOSITORY = "RyougiKukoc/vapoursynth-tivtc-api4"
-DEFAULT_PREBUILT_ASSET = "tivtc-msys2-ucrt64.zip"
+WINDOWS_PREBUILT_ASSET = "tivtc-msys2-ucrt64.zip"
+LINUX_PREBUILT_ASSET = "tivtc-linux-x86_64.zip"
 
 
 def _truthy(value: str | None) -> bool:
@@ -38,10 +39,16 @@ def _project_version() -> str:
     return version
 
 
+def _default_prebuilt_asset() -> str:
+    if sys.platform == "linux" and platform.machine().lower() in {"amd64", "x86_64"}:
+        return LINUX_PREBUILT_ASSET
+    return WINDOWS_PREBUILT_ASSET
+
+
 def _default_prebuilt_url(version: str) -> str:
     repository = os.environ.get("TIVTC_PREBUILT_REPOSITORY") or os.environ.get("GITHUB_REPOSITORY") or DEFAULT_REPOSITORY
     tag = os.environ.get("TIVTC_PREBUILT_TAG") or f"v{version}"
-    asset = os.environ.get("TIVTC_PREBUILT_ASSET_NAME") or DEFAULT_PREBUILT_ASSET
+    asset = os.environ.get("TIVTC_PREBUILT_ASSET_NAME") or _default_prebuilt_asset()
     return f"https://github.com/{repository}/releases/download/{tag}/{asset}"
 
 
@@ -53,7 +60,15 @@ def _prebuilt_source(version: str) -> tuple[str, bool]:
 
 
 def _supports_prebuilt() -> bool:
-    return sys.platform == "win32" and platform.machine().lower() in {"amd64", "x86_64"}
+    return sys.platform in {"win32", "linux"} and platform.machine().lower() in {"amd64", "x86_64"}
+
+
+def _plugin_filename() -> str:
+    if sys.platform == "win32":
+        return f"{PLUGIN_NAME}.dll"
+    if sys.platform == "darwin":
+        return f"{PLUGIN_NAME}.dylib"
+    return f"{PLUGIN_NAME}.so"
 
 
 def _fetch_prebuilt_archive(source: str, destination: Path) -> None:
@@ -67,30 +82,38 @@ def _fetch_prebuilt_archive(source: str, destination: Path) -> None:
         shutil.copyfileobj(response, handle)
 
 
-def _stage_package_from_zip(archive_path: Path, target_dir: Path) -> None:
-    with zipfile.ZipFile(archive_path) as zf:
-        package_members = [
-            name
-            for name in zf.namelist()
-            if name.replace("\\", "/").startswith(f"{PLUGIN_NAME}/") and not name.endswith("/")
-        ]
-        if not package_members:
-            raise FileNotFoundError(f"prebuilt archive does not contain a {PLUGIN_NAME}/ package directory")
+def _write_manifest(target_dir: Path) -> None:
+    (target_dir / "manifest.vs").write_text(
+        "[VapourSynth Manifest V1]\n"
+        f"{PLUGIN_NAME}\n",
+        encoding="ascii",
+        newline="\n",
+    )
 
-        for member in package_members:
-            normalized = member.replace("\\", "/")
-            relative = normalized.split("/", 1)[1]
-            out_path = target_dir / relative
+
+def _stage_package_from_zip(archive_path: Path, target_dir: Path) -> None:
+    root = target_dir.resolve()
+    with zipfile.ZipFile(archive_path) as zf:
+        members = [info.filename.replace("\\", "/") for info in zf.infolist() if not info.is_dir()]
+        if not members or any(not member.startswith(f"{PLUGIN_NAME}/") for member in members):
+            raise FileNotFoundError(f"prebuilt archive must contain only a top-level {PLUGIN_NAME}/ package directory")
+
+        for member in members:
+            relative = member.split("/", 1)[1]
+            out_path = (target_dir / relative).resolve()
+            try:
+                out_path.relative_to(root)
+            except ValueError as exc:
+                raise RuntimeError(f"unsafe path in prebuilt archive: {member!r}") from exc
             out_path.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(member) as src, out_path.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
 
-    plugin_dll = target_dir / f"{PLUGIN_NAME}.dll"
-    if not plugin_dll.exists():
-        raise FileNotFoundError(f"prebuilt archive did not provide {PLUGIN_NAME}.dll")
-    manifest = target_dir / "manifest.vs"
-    if not manifest.exists():
-        manifest.write_text("[VapourSynth Manifest V1]\ntivtc\n", encoding="ascii", newline="\n")
+    plugin = target_dir / _plugin_filename()
+    if not plugin.is_file():
+        raise FileNotFoundError(f"prebuilt archive did not provide {_plugin_filename()}")
+    if not (target_dir / "manifest.vs").is_file():
+        _write_manifest(target_dir)
 
 
 def _stage_prebuilt_plugin(version: str, target_dir: Path) -> bool:
@@ -98,11 +121,11 @@ def _stage_prebuilt_plugin(version: str, target_dir: Path) -> bool:
         print("TIVTC wheel build: skipping prebuilt asset because TIVTC_FORCE_BUILD is set")
         return False
     if not _supports_prebuilt():
-        print("TIVTC wheel build: prebuilt release asset path only applies to Windows x86_64; falling back to local build")
+        print("TIVTC wheel build: no matching platform release asset path; falling back to local build")
         return False
 
     source, explicit = _prebuilt_source(version)
-    asset_name = Path(source).name or DEFAULT_PREBUILT_ASSET
+    asset_name = Path(source).name or _default_prebuilt_asset()
     try:
         with tempfile.TemporaryDirectory(prefix="tivtc-prebuilt-") as temp_dir_text:
             archive_path = Path(temp_dir_text) / asset_name
@@ -125,99 +148,117 @@ def _run(cmd: list[str], *, env: dict[str, str]) -> None:
 
 def _prepend_path_entries(env: dict[str, str], entries: list[Path]) -> None:
     parts = [str(entry) for entry in entries if entry.exists()]
-    if not parts:
-        return
-    existing = env.get("PATH")
-    env["PATH"] = os.pathsep.join(parts + ([existing] if existing else []))
+    if parts:
+        existing = env.get("PATH")
+        env["PATH"] = os.pathsep.join(parts + ([existing] if existing else []))
 
 
 def _candidate_msys2_prefixes(env: dict[str, str]) -> list[Path]:
     prefixes: list[Path] = []
-    msystem_prefix = env.get("MSYSTEM_PREFIX")
-    if msystem_prefix:
-        prefixes.append(Path(msystem_prefix))
+    if env.get("MSYSTEM_PREFIX"):
+        prefixes.append(Path(env["MSYSTEM_PREFIX"]))
     for var_name in ("MSYS2_ROOT", "MSYS2_DIR"):
-        msys2_root = env.get(var_name)
-        if not msys2_root:
-            continue
-        root = Path(msys2_root)
-        prefixes.extend([root / "ucrt64", root / "mingw64"])
-    for parent in (ROOT, *ROOT.parents):
-        msys2_root = parent / "msys2"
-        if not msys2_root.exists():
-            continue
-        prefixes.extend([msys2_root / "ucrt64", msys2_root / "mingw64"])
-        break
+        if env.get(var_name):
+            root = Path(env[var_name])
+            prefixes.extend([root / "ucrt64", root / "mingw64"])
     prefixes.extend([Path(r"C:\msys64\ucrt64"), Path(r"C:\msys64\mingw64")])
-
-    seen: set[str] = set()
-    unique: list[Path] = []
-    for prefix in prefixes:
-        key = str(prefix).lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(prefix)
-    return unique
+    return list(dict.fromkeys(prefixes))
 
 
 def _configure_windows_build_env(env: dict[str, str]) -> dict[str, str]:
-    if sys.platform != "win32":
-        return env
-
-    path_entries: list[Path] = []
-    python_scripts = Path(sys.executable).resolve().parent / "Scripts"
-    if python_scripts.exists():
-        path_entries.append(python_scripts)
-
+    path_entries = [Path(sys.executable).resolve().parent / "Scripts"]
     for prefix in _candidate_msys2_prefixes(env):
         path_entries.extend([prefix / "bin", prefix.parent / "usr" / "bin"])
     _prepend_path_entries(env, path_entries)
-
     env.setdefault("CC", "gcc")
     env.setdefault("CXX", "g++")
     return env
 
 
+def _configure_posix_build_env(env: dict[str, str]) -> dict[str, str]:
+    """Prepend the wheel SDK while retaining any caller-supplied pc search path."""
+    try:
+        import vapoursynth
+    except ImportError:
+        return env
+    pkgconfig_dir = Path(vapoursynth.__file__).resolve().parent / "pkgconfig"
+    if pkgconfig_dir.is_dir():
+        existing = env.get("PKG_CONFIG_PATH")
+        env["PKG_CONFIG_PATH"] = os.pathsep.join(
+            [str(pkgconfig_dir)] + ([existing] if existing else [])
+        )
+    return env
+
+
+def _meson_command() -> list[str]:
+    meson = shutil.which("meson")
+    if meson:
+        return [meson]
+    for module_name in ("mesonbuild", "mesonbuild.mesonmain"):
+        command = [sys.executable, "-m", module_name]
+        if subprocess.run(command + ["--version"], cwd=ROOT, capture_output=True).returncode == 0:
+            return command
+    raise FileNotFoundError("meson executable not found and python -m mesonbuild is unavailable")
+
+
+def _find_built_plugin(build_dir: Path) -> Path:
+    suffixes = [".dll"] if sys.platform == "win32" else [".so", ".dylib"]
+    for suffix in suffixes:
+        for stem in (PLUGIN_NAME, f"lib{PLUGIN_NAME}"):
+            candidate = build_dir / f"{stem}{suffix}"
+            if candidate.is_file():
+                return candidate
+    raise FileNotFoundError(f"missing built TIVTC plugin under {build_dir}")
+
+
 def _stage_local_build(target_dir: Path) -> None:
-    env = _configure_windows_build_env(os.environ.copy())
-    build_dir = ROOT / "build-wheel-msys2"
-    plugins_root = target_dir.parent
-    _run([sys.executable, "tools/ci_prepare_msys2.py"], env=env)
-    _run(
-        [
-            sys.executable,
-            "tools/ci_build_msys2.py",
-            "--clean",
-            "--build-dir",
-            str(build_dir),
-            "--dist-dir",
-            str(plugins_root),
-        ],
-        env=env,
-    )
-    if not (target_dir / f"{PLUGIN_NAME}.dll").exists():
-        raise FileNotFoundError(target_dir / f"{PLUGIN_NAME}.dll")
+    if sys.platform == "win32":
+        env = _configure_windows_build_env(os.environ.copy())
+        build_dir = ROOT / "build-wheel-msys2"
+        _run([sys.executable, "tools/ci_prepare_msys2.py"], env=env)
+        _run(
+            [
+                sys.executable,
+                "tools/ci_build_msys2.py",
+                "--clean",
+                "--build-dir",
+                str(build_dir),
+                "--dist-dir",
+                str(target_dir.parent),
+            ],
+            env=env,
+        )
+        if not (target_dir / _plugin_filename()).is_file():
+            raise FileNotFoundError(target_dir / _plugin_filename())
+        return
+
+    env = _configure_posix_build_env(os.environ.copy())
+    build_dir = ROOT / "build-wheel-native"
+    meson = _meson_command()
+    _run(meson + ["setup", str(build_dir), "--wipe"], env=env)
+    _run(meson + ["compile", "-C", str(build_dir)], env=env)
+    shutil.copy2(_find_built_plugin(build_dir), target_dir / _plugin_filename())
+    _write_manifest(target_dir)
 
 
 class CustomHook(BuildHookInterface[Any]):
-    build_dir = ROOT / "build-wheel-msys2"
     dist_dir = ROOT / "vapoursynth" / "plugins" / PLUGIN_NAME
 
     def initialize(self, version: str, build_data: dict[str, Any]) -> None:
         del version
         build_data["pure_python"] = False
-        build_data["tag"] = f"py3-none-{next(tags.platform_tags())}"
-        project_version = _project_version()
+        platform_tag = os.environ.get("TIVTC_PLATFORM_TAG") or str(next(tags.platform_tags()))
+        build_data["tag"] = f"py3-none-{platform_tag}"
 
-        shutil.rmtree(self.build_dir, ignore_errors=True)
+        build_dir = ROOT / ("build-wheel-msys2" if sys.platform == "win32" else "build-wheel-native")
+        shutil.rmtree(build_dir, ignore_errors=True)
         shutil.rmtree(self.dist_dir.parent.parent, ignore_errors=True)
         self.dist_dir.mkdir(parents=True, exist_ok=True)
-
-        if not _stage_prebuilt_plugin(project_version, self.dist_dir):
+        if not _stage_prebuilt_plugin(_project_version(), self.dist_dir):
             _stage_local_build(self.dist_dir)
 
     def finalize(self, version: str, build_data: dict[str, Any], artifact_path: str) -> None:
         del version, build_data, artifact_path
-        shutil.rmtree(self.build_dir, ignore_errors=True)
+        for build_dir in (ROOT / "build-wheel-msys2", ROOT / "build-wheel-native"):
+            shutil.rmtree(build_dir, ignore_errors=True)
         shutil.rmtree(self.dist_dir.parent.parent, ignore_errors=True)

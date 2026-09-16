@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling>=1.30", "packaging>=24.0", "meson>=0.49", "ninja"]
+requires = ["hatchling>=1.30", "packaging>=24.0", "meson>=0.49", "ninja", "VapourSynth>=77"]
 build-backend = "hatchling.build"
 
 [project]
 name = "vapoursynth-tivtc"
-version = "3.5"
+version = "3.6"
 description = "TIVTC field matching and decimation plugin for VapourSynth"
 readme = "README.md"
 license = { text = "GPL-2.0-or-later" }
@@ -30,6 +30,8 @@ include = [
 include = ["vapoursynth/plugins"]
 artifacts = [
   "vapoursynth/plugins/**/*.dll",
+  "vapoursynth/plugins/**/*.so",
+  "vapoursynth/plugins/**/*.dylib",
   "vapoursynth/plugins/**/manifest.vs",
 ]
 

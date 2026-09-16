@@ -1,0 +1,202 @@
+name: Build and release
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-x86_64:
+    name: Build Windows UCRT64
+    runs-on: windows-2025
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python tools and VapourSynth
+        shell: powershell
+        run: python -m pip install --upgrade pip build hatchling packaging meson ninja VapourSynth
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-meson
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Prepare VapourSynth R79 wheel SDK
+        shell: powershell
+        run: python tools/ci_prepare_msys2.py
+
+      - name: Build Windows payload and wheel
+        shell: powershell
+        run: |
+          $env:TIVTC_FORCE_BUILD = '1'
+          python tools/ci_build_msys2.py --clean
+          python tools\package_plugin_zip.py --input-dir dist\msys2-ucrt64 --output dist\tivtc-msys2-ucrt64.zip
+          $env:TIVTC_PREBUILT_URL = Join-Path $PWD 'dist\tivtc-msys2-ucrt64.zip'
+          Remove-Item Env:\TIVTC_FORCE_BUILD -ErrorAction SilentlyContinue
+          python -m build --wheel --no-isolation --outdir dist\wheels
+
+      - name: Check and explicitly load Windows payload
+        shell: powershell
+        run: |
+          python tools\check_package_layout.py dist\tivtc-msys2-ucrt64.zip --plugin-dll tivtc.dll --require-manifest --require-top-level-dir --forbid-vapoursynth-prefix
+          python tools\smoke_load_artifact.py --vapoursynth-root _deps\vapoursynth-wheel-R77 --artifact-dir dist\msys2-ucrt64 --exercise-filter
+
+      - name: Smoke installed Windows wheel
+        shell: powershell
+        run: |
+          $wheel = Get-ChildItem dist\wheels\vapoursynth_tivtc-*.whl | Select-Object -ExpandProperty FullName
+          python -m pip install --force-reinstall --no-deps $wheel
+          python tools\ci_smoke_installed_wheel.py --json
+
+      - name: Prepare exact Windows release assets
+        shell: powershell
+        run: python tools\ci_make_release_assets.py --clean --json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tivtc-release-assets-win64
+          path: dist/release-assets
+          if-no-files-found: error
+
+  linux-x86_64:
+    name: Build Linux x86_64 payload
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build payload and wheel in manylinux
+        shell: bash
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/workspace" -w /workspace quay.io/pypa/manylinux2014_x86_64 bash -lc '
+            set -exo pipefail
+            source /opt/rh/devtoolset-10/enable
+            set -u
+            py=/opt/python/cp313-cp313/bin/python
+            export PATH="/opt/python/cp313-cp313/bin:$PATH"
+            "$py" -m pip install --upgrade pip build hatchling packaging meson ninja
+            mkdir -p _deps/vapoursynth-wheel dist/wheels-linux dist/linux-x86_64
+            "$py" -m pip download --only-binary=:all: --no-deps --platform manylinux_2_27_x86_64 --implementation cp --python-version 313 --abi abi3 VapourSynth==79 -d _deps/vapoursynth-wheel
+            unzip -q _deps/vapoursynth-wheel/*.whl -d _deps/vapoursynth-wheel/extracted
+            export PKG_CONFIG_PATH=/workspace/_deps/vapoursynth-wheel/extracted/vapoursynth/pkgconfig
+            export TIVTC_FORCE_BUILD=1
+            export TIVTC_PLATFORM_TAG=manylinux_2_27_x86_64
+            "$py" -m build --wheel --no-isolation --skip-dependency-check --outdir dist/wheels-linux
+            wheel=$(find dist/wheels-linux -name "vapoursynth_tivtc-*.whl" -print -quit)
+            test -n "$wheel"
+            unzip -q "$wheel" "vapoursynth/plugins/tivtc/*" -d dist/linux-x86_64/extracted
+            mv dist/linux-x86_64/extracted/vapoursynth/plugins/tivtc dist/linux-x86_64/tivtc
+            "$py" tools/ci_make_release_assets.py --clean --package-dir dist/linux-x86_64/tivtc --wheel-dir dist/wheels-linux --out-dir dist/release-assets-linux --zip-name tivtc-linux-x86_64.zip --json
+            "$py" tools/check_package_layout.py dist/release-assets-linux/tivtc-linux-x86_64.zip --plugin-dll tivtc.so --require-manifest --require-top-level-dir --forbid-vapoursynth-prefix
+            find dist/linux-x86_64/tivtc -type f -name "*.so*" -print -exec readelf --version-info {} \; | tee dist/linux-x86_64/abi.txt
+            "$py" -c "import re; text=open('dist/linux-x86_64/abi.txt').read(); values=[tuple(map(int, x.split('.'))) for x in re.findall(r'GLIBC_(\\d+\\.\\d+)', text)]; assert all(value <= (2, 17) for value in values), values"
+          '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tivtc-release-assets-linux
+          path: dist/release-assets-linux
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tivtc-linux-abi-report
+          path: dist/linux-x86_64/abi.txt
+          if-no-files-found: error
+
+  linux-runtime-smoke:
+    name: Smoke Linux release and fallback paths
+    needs: linux-x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tivtc-release-assets-linux
+          path: dist/release-assets-linux
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Explicit-load actual Linux release zip
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m pip install --upgrade pip VapourSynth==79
+          python tools/ci_smoke_package.py --artifact-zip dist/release-assets-linux/tivtc-linux-x86_64.zip --json
+
+      - name: Install published-wheel shape and autoload
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m pip install --force-reinstall --no-deps dist/release-assets-linux/vapoursynth_tivtc-*.whl
+          python tools/ci_smoke_installed_wheel.py --json
+
+      - name: Exercise release asset source-install path
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m pip uninstall -y vapoursynth-tivtc
+          export TIVTC_PREBUILT_URL="$GITHUB_WORKSPACE/dist/release-assets-linux/tivtc-linux-x86_64.zip"
+          python -m pip install --force-reinstall --no-deps -v .
+          python tools/ci_smoke_installed_wheel.py --json
+
+      - name: Exercise isolated PEP 517 force-build fallback
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m pip uninstall -y vapoursynth-tivtc
+          export TIVTC_FORCE_BUILD=1
+          export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+          python -m pip install --force-reinstall --no-deps -v .
+          python tools/ci_smoke_installed_wheel.py --json
+
+  publish-release:
+    name: Publish exact release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows-x86_64, linux-runtime-smoke]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tivtc-release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create one release and upload its exact asset inventory
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          tag="$GITHUB_REF_NAME"
+          expected=4
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq "$expected"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" release-assets/* --title "$tag" --notes "Automated TIVTC release for $tag." --repo "$GITHUB_REPOSITORY"
+          fi
+          actual=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')
+          test "$actual" -eq "$expected"
